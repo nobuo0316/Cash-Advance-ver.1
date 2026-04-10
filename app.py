@@ -3,10 +3,99 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pandas as pd
-import streamlit as st
-from supabase import Client, create_client
-from postgrest.exceptions import APIError
 
+
+import streamlit as st
+from supabase import create_client
+
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+
+supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+APP_URL = "https://avg-salary-at-manila-ffmzzkydywu9cnqwks5za9.streamlit.app/"
+
+# =========================
+# OAuth callback（最重要）
+# =========================
+def handle_oauth_callback():
+    query_params = st.query_params
+
+    if "code" in query_params and "session" not in st.session_state:
+        try:
+            auth_code = query_params["code"]
+
+            res = supabase.auth.exchange_code_for_session({
+                "auth_code": auth_code
+            })
+
+            if res.session:
+                st.session_state["session"] = res.session
+                st.session_state["user"] = res.user
+
+                # URLをきれいにする
+                st.query_params.clear()
+                st.rerun()
+            else:
+                st.error("No session returned.")
+
+        except Exception as e:
+            st.error(f"OAuth error: {e}")
+
+# =========================
+# Googleログイン開始
+# =========================
+def start_google_login():
+    try:
+        res = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": APP_URL
+            }
+        })
+
+        st.link_button("👉 Continue with Google", res.url)
+
+    except Exception as e:
+        st.error(f"Login start error: {e}")
+
+# =========================
+# ログイン判定
+# =========================
+def get_user():
+    return st.session_state.get("user")
+
+# =========================
+# メイン処理
+# =========================
+def main():
+
+    # 🔥 これが一番大事（最初に呼ぶ）
+    handle_oauth_callback()
+
+    user = get_user()
+
+    if not user:
+        st.title("Cash Advance App")
+
+        if st.button("Sign in with Google"):
+            start_google_login()
+
+        st.stop()
+
+    # =========================
+    # ログイン後画面
+    # =========================
+    st.success(f"Logged in: {user.email}")
+
+    if st.button("Logout"):
+        supabase.auth.sign_out()
+        st.session_state.clear()
+        st.rerun()
+
+
+if __name__ == "__main__":
+    main()
 st.set_page_config(page_title="Cash Advance Application", page_icon="💸", layout="wide")
 
 APP_TITLE = "💸 Cash Advance Application"
