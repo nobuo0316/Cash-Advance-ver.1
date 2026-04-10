@@ -14,7 +14,7 @@ from supabase import Client, create_client
 st.set_page_config(page_title="Cash Advance Application", page_icon="💸", layout="wide")
 
 APP_TITLE = "💸 Cash Advance Application"
-APP_URL = "https://avg-salary-at-manila-ffmzzkydywu9cnqwks5za9.streamlit.app"
+APP_URL = "https://avg-salary-at-manila-ffmzzkydywu9cnqwks5za9.streamlit.app/"
 DEFAULT_PLEDGE = (
     "If I fail to liquidate or return the cash advance on or before the due date, "
     "I authorize the company to deduct the outstanding balance from my salary, "
@@ -30,7 +30,6 @@ def get_base_client() -> Client:
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
 
 
-
 def get_client() -> Client:
     client = get_base_client()
     access_token = st.session_state.get("access_token")
@@ -41,7 +40,6 @@ def get_client() -> Client:
         except Exception:
             pass
     return client
-
 
 
 def save_session(auth_response) -> None:
@@ -55,11 +53,15 @@ def save_session(auth_response) -> None:
     st.session_state["user_email"] = user.email
 
 
-
 def clear_session() -> None:
-    for key in ["access_token", "refresh_token", "user_email", "profile_cache", "oauth_url"]:
+    for key in [
+        "access_token",
+        "refresh_token",
+        "user_email",
+        "profile_cache",
+        "oauth_url",
+    ]:
         st.session_state.pop(key, None)
-
 
 
 def current_user():
@@ -77,6 +79,26 @@ def current_user():
         return None
 
 
+def start_google_login() -> None:
+    try:
+        client = get_base_client()
+        auth_response = client.auth.sign_in_with_oauth(
+            {
+                "provider": "google",
+                "options": {
+                    "redirect_to": APP_URL,
+                    "skip_browser_redirect": True,
+                },
+            }
+        )
+        oauth_url = getattr(auth_response, "url", None)
+        if not oauth_url:
+            raise RuntimeError("Supabase did not return an OAuth URL.")
+        st.session_state["oauth_url"] = oauth_url
+    except Exception as e:
+        st.error(f"Google sign-in start failed: {e}")
+
+
 
 def handle_oauth_callback() -> None:
     if st.session_state.get("access_token"):
@@ -90,6 +112,7 @@ def handle_oauth_callback() -> None:
         client = get_base_client()
         auth_response = client.auth.exchange_code_for_session({"auth_code": code})
         save_session(auth_response)
+        st.session_state.pop("oauth_url", None)
         st.query_params.clear()
         st.success("Google login completed.")
         st.rerun()
@@ -106,7 +129,6 @@ def normalize_rows(rows):
             if isinstance(value, Decimal):
                 row[key] = float(value)
     return rows
-
 
 
 def ensure_profile(client: Client):
@@ -156,7 +178,6 @@ def ensure_profile(client: Client):
         return profile
 
 
-
 def fetch_profile(client: Client):
     user = current_user()
     if not user:
@@ -167,7 +188,6 @@ def fetch_profile(client: Client):
         return cached
 
     return ensure_profile(client)
-
 
 
 def list_my_requests(client: Client, profile_id: str):
@@ -181,7 +201,6 @@ def list_my_requests(client: Client, profile_id: str):
     return normalize_rows(data.data or [])
 
 
-
 def list_manager_requests(client: Client, manager_id: str):
     data = (
         client.table("cash_advance_requests")
@@ -191,7 +210,6 @@ def list_manager_requests(client: Client, manager_id: str):
         .execute()
     )
     return normalize_rows(data.data or [])
-
 
 
 def list_finance_requests(client: Client):
@@ -204,7 +222,6 @@ def list_finance_requests(client: Client):
     return normalize_rows(data.data or [])
 
 
-
 def list_profiles(client: Client):
     data = (
         client.table("profiles")
@@ -213,7 +230,6 @@ def list_profiles(client: Client):
         .execute()
     )
     return data.data or []
-
 
 
 def submit_request(client: Client, profile: dict, payload: dict):
@@ -235,10 +251,8 @@ def submit_request(client: Client, profile: dict, payload: dict):
     return client.table("cash_advance_requests").insert(form_data).execute()
 
 
-
 def update_request_status(client: Client, request_id: str, fields: dict):
     return client.table("cash_advance_requests").update(fields).eq("id", request_id).execute()
-
 
 
 def update_profile(client: Client, profile_id: str, fields: dict):
@@ -258,41 +272,32 @@ def request_to_pdf_bytes(row: dict) -> bytes:
         topMargin=18 * mm,
         bottomMargin=18 * mm,
     )
+
     styles = getSampleStyleSheet()
-    story = []
+    story = [Paragraph("Cash Advance Application", styles["Title"]), Spacer(1, 6 * mm)]
 
-    story.append(Paragraph("Cash Advance Application", styles["Title"]))
-    story.append(Spacer(1, 6))
-
-    items = [
-        ("Status", row.get("status") or "-"),
-        ("Name", row.get("employee_name") or "-"),
-        ("Department", row.get("department") or "-"),
-        ("Office", row.get("office") or "-"),
+    fields = [
+        ("Status", row.get("status")),
+        ("Employee", row.get("employee_name")),
+        ("Department", row.get("department")),
+        ("Office", row.get("office")),
         ("Amount", f"{float(row.get('amount') or 0):,.2f}"),
-        ("Purpose", row.get("purpose") or "-"),
-        ("Liquidation due date", row.get("liquidation_due_date") or "-"),
-        ("Employee signature", row.get("employee_signed_name") or "-"),
-        ("Employee signed at", row.get("employee_signed_at") or "-"),
-        ("Manager signature", row.get("manager_signed_name") or "-"),
-        ("Manager signed at", row.get("manager_signed_at") or "-"),
-        ("Finance signature", row.get("finance_signed_name") or "-"),
-        ("Finance signed at", row.get("finance_signed_at") or "-"),
+        ("Purpose", row.get("purpose")),
+        ("Liquidation due date", row.get("liquidation_due_date")),
+        ("Employee signature", row.get("employee_signed_name")),
+        ("Manager signature", row.get("manager_signed_name")),
+        ("Finance signature", row.get("finance_signed_name")),
+        ("Undertaking", row.get("payroll_deduction_text") or DEFAULT_PLEDGE),
         ("Rejection reason", row.get("rejection_reason") or "-"),
         ("Liquidation notes", row.get("liquidation_notes") or "-"),
-        (
-            "Payroll deduction undertaking accepted",
-            "Yes" if row.get("payroll_deduction_consent") else "No",
-        ),
-        ("Undertaking text", row.get("payroll_deduction_text") or DEFAULT_PLEDGE),
     ]
 
-    for label, value in items:
-        story.append(Paragraph(f"<b>{label}:</b> {str(value)}", styles["BodyText"]))
-        story.append(Spacer(1, 4))
+    for label, value in fields:
+        safe_value = str(value or "-").replace("\n", "<br/>")
+        story.append(Paragraph(f"<b>{label}:</b> {safe_value}", styles["BodyText"]))
+        story.append(Spacer(1, 2 * mm))
 
     doc.build(story)
-    buffer.seek(0)
     return buffer.getvalue()
 
 
@@ -314,43 +319,25 @@ def show_header(profile: dict):
         st.rerun()
 
 
-
-def google_login_block():
-    st.markdown("**Google sign-in**")
-    st.caption("Use this if Google is enabled in Supabase and the redirect URL is already configured.")
-    if st.button("Sign in with Google", use_container_width=True):
-        try:
-            client = get_base_client()
-            response = client.auth.sign_in_with_oauth(
-                {
-                    "provider": "google",
-                    "options": {"redirect_to": APP_URL},
-                }
-            )
-            oauth_url = getattr(response, "url", None)
-            if not oauth_url:
-                st.error("Supabase did not return an OAuth URL.")
-            else:
-                st.session_state["oauth_url"] = oauth_url
-        except Exception as e:
-            st.error(f"Could not start Google sign-in: {e}")
-
-    oauth_url = st.session_state.get("oauth_url")
-    if oauth_url:
-        st.link_button("Continue to Google", oauth_url, use_container_width=True)
-        st.info("After approving Google sign-in, you will be redirected back to this Streamlit app.")
-
-
-
 def login_screen():
     st.title(APP_TITLE)
     st.caption("Supabase Auth + Streamlit starter for Cash Advance Application")
 
+    st.subheader("Google sign-in")
+    if st.button("Sign in with Google", use_container_width=True):
+        start_google_login()
+        st.rerun()
+
+    oauth_url = st.session_state.get("oauth_url")
+    if oauth_url:
+        st.link_button("Continue to Google", oauth_url, use_container_width=True)
+        st.info("After Google sign-in, you will be redirected back to this app.")
+
+    st.divider()
+
     tabs = st.tabs(["Login", "Sign up"])
 
     with tabs[0]:
-        google_login_block()
-        st.divider()
         with st.form("login_form"):
             email = st.text_input("Email")
             password = st.text_input("Password", type="password")
@@ -389,12 +376,11 @@ def login_screen():
                         "email": email,
                         "password": password,
                         "options": {
-                            "email_redirect_to": APP_URL,
                             "data": {
                                 "full_name": full_name,
                                 "department": department,
                                 "office": office,
-                            },
+                            }
                         },
                     }
                 )
@@ -405,12 +391,8 @@ def login_screen():
                 st.error(f"Sign-up failed: {e}")
 
 
-
 def employee_form_tab(client: Client, profile: dict):
     st.subheader("New C/A Application")
-    if not profile.get("manager_id"):
-        st.warning("No manager is assigned to your profile yet. The request can still be saved, but manager approval will not route correctly until an admin sets your manager.")
-
     with st.form("ca_form", clear_on_submit=False):
         st.text_input("Name", value=profile.get("full_name") or "", disabled=True)
         col1, col2 = st.columns(2)
@@ -475,21 +457,6 @@ def employee_form_tab(client: Client, profile: dict):
             st.error(f"Submit failed: {e}")
 
 
-
-def render_request_pdf_download(row: dict, key_prefix: str):
-    pdf_bytes = request_to_pdf_bytes(row)
-    filename = f"cash_advance_{row.get('id', 'request')}.pdf"
-    st.download_button(
-        "Download PDF",
-        data=pdf_bytes,
-        file_name=filename,
-        mime="application/pdf",
-        key=f"{key_prefix}_pdf_{row.get('id')}",
-        use_container_width=True,
-    )
-
-
-
 def my_requests_tab(client: Client, profile: dict):
     st.subheader("My Requests")
     rows = list_my_requests(client, profile["id"])
@@ -512,17 +479,17 @@ def my_requests_tab(client: Client, profile: dict):
     show_cols = [c for c in display_cols if c in df.columns]
     st.dataframe(df[show_cols], use_container_width=True)
 
-    st.markdown("### Request details / PDF")
-    for row in rows:
-        with st.expander(f"{row['status']} | {row['amount']:,.2f} | {row.get('created_at', '')}"):
-            st.write(f"**Purpose:** {row.get('purpose') or '-'}")
-            st.write(f"**Due date:** {row.get('liquidation_due_date') or '-'}")
-            st.write(f"**Manager signed:** {row.get('manager_signed_name') or '-'}")
-            st.write(f"**Finance signed:** {row.get('finance_signed_name') or '-'}")
-            st.write(f"**Rejection reason:** {row.get('rejection_reason') or '-'}")
-            st.write(f"**Liquidation notes:** {row.get('liquidation_notes') or '-'}")
-            render_request_pdf_download(row, "my")
-
+    st.markdown("### Download PDF")
+    for idx, row in enumerate(rows):
+        file_name = f"cash_advance_{row['id']}.pdf"
+        st.download_button(
+            label=f"Download PDF: {row['status']} | {row['amount']:,.2f} | {row['liquidation_due_date']}",
+            data=request_to_pdf_bytes(row),
+            file_name=file_name,
+            mime="application/pdf",
+            key=f"pdf_{idx}_{row['id']}",
+            use_container_width=True,
+        )
 
 
 def manager_tab(client: Client, profile: dict):
@@ -544,11 +511,8 @@ def manager_tab(client: Client, profile: dict):
             st.write(f"**Purpose:** {row.get('purpose') or '-'}")
             st.write(f"**Employee signed:** {row.get('employee_signed_name') or '-'}")
             st.write(f"**Undertaking accepted:** {'Yes' if row.get('payroll_deduction_consent') else 'No'}")
-            render_request_pdf_download(row, "mgr")
             sign_name = st.text_input(
-                f"Manager signature for {row['id']}",
-                value=profile.get("full_name") or "",
-                key=f"mgr_sig_{row['id']}",
+                f"Manager signature for {row['id']}", value=profile.get("full_name") or "", key=f"mgr_sig_{row['id']}"
             )
             reason = st.text_area(f"Remarks / rejection reason ({row['id']})", key=f"mgr_reason_{row['id']}")
             c1, c2 = st.columns(2)
@@ -589,7 +553,6 @@ def manager_tab(client: Client, profile: dict):
                         st.error(f"Reject failed: {e}")
 
 
-
 def finance_tab(client: Client, profile: dict):
     st.subheader("Finance Processing")
     rows = list_finance_requests(client)
@@ -612,11 +575,8 @@ def finance_tab(client: Client, profile: dict):
             st.write(f"**Due date:** {row.get('liquidation_due_date') or '-'}")
             st.write(f"**Manager signed:** {row.get('manager_signed_name') or '-'}")
             st.write(f"**Consent:** {'Yes' if row.get('payroll_deduction_consent') else 'No'}")
-            render_request_pdf_download(row, "fin")
             sign_name = st.text_input(
-                f"Finance signature for {row['id']}",
-                value=profile.get("full_name") or "",
-                key=f"fin_sig_{row['id']}",
+                f"Finance signature for {row['id']}", value=profile.get("full_name") or "", key=f"fin_sig_{row['id']}"
             )
             notes = st.text_area(f"Finance notes ({row['id']})", key=f"fin_notes_{row['id']}")
             c1, c2, c3 = st.columns(3)
@@ -677,7 +637,6 @@ def finance_tab(client: Client, profile: dict):
                     st.error(f"Payroll deduction update failed: {e}")
 
 
-
 def admin_tab(client: Client, profile: dict):
     st.subheader("Admin / Master Data")
     rows = list_profiles(client)
@@ -692,19 +651,11 @@ def admin_tab(client: Client, profile: dict):
 
     with st.form("admin_profile_update"):
         target_label = st.selectbox("Employee", list(options.keys()))
-        selected_row = next(r for r in rows if r["id"] == options[target_label])
-        role = st.selectbox("Role", ROLE_OPTIONS, index=ROLE_OPTIONS.index(selected_row.get("role") or "employee"))
-        manager_choices = ["<None>"] + list(options.keys())
-        reverse_lookup = {v: k for k, v in options.items()}
-        current_manager_label = reverse_lookup.get(selected_row.get("manager_id"), "<None>")
-        manager_label = st.selectbox(
-            "Manager",
-            manager_choices,
-            index=manager_choices.index(current_manager_label) if current_manager_label in manager_choices else 0,
-        )
-        office = st.text_input("Office", value=selected_row.get("office") or "")
-        department = st.text_input("Department", value=selected_row.get("department") or "")
-        is_active = st.checkbox("Is active", value=bool(selected_row.get("is_active", True)))
+        role = st.selectbox("Role", ROLE_OPTIONS)
+        manager_label = st.selectbox("Manager", ["<None>"] + list(options.keys()))
+        office = st.text_input("Office override")
+        department = st.text_input("Department override")
+        is_active = st.checkbox("Is active", value=True)
         submitted = st.form_submit_button("Update profile", use_container_width=True)
 
     if submitted:
@@ -713,9 +664,11 @@ def admin_tab(client: Client, profile: dict):
             "role": role,
             "manager_id": manager_id,
             "is_active": is_active,
-            "office": office.strip(),
-            "department": department.strip(),
         }
+        if office.strip():
+            fields["office"] = office.strip()
+        if department.strip():
+            fields["department"] = department.strip()
         try:
             update_profile(client, options[target_label], fields)
             st.success("Profile updated.")
@@ -735,7 +688,6 @@ def main():
         st.session_state["refresh_token"] = None
 
     handle_oauth_callback()
-
     user = current_user()
     if not user:
         login_screen()
@@ -750,10 +702,6 @@ def main():
 
     if not profile:
         st.error("No profile found for this user.")
-        return
-
-    if not profile.get("is_active", True):
-        st.error("Your account is inactive. Please contact an administrator.")
         return
 
     show_header(profile)
@@ -789,8 +737,8 @@ def main():
 
     st.divider()
     st.caption(
-        "Secrets needed: SUPABASE_URL and SUPABASE_ANON_KEY. Google sign-in uses the fixed app URL configured in this file. "
-        "If you duplicate this app under a new URL later, update APP_URL and the Supabase redirect allow list."
+        "Setup note: use SUPABASE_URL and SUPABASE_ANON_KEY in Streamlit secrets. "
+        "Create users first, then assign role / manager_id from the Admin tab or directly in Supabase."
     )
 
 
